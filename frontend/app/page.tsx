@@ -22,8 +22,8 @@ export default function Home() {
             href="/history"
             className="p-6 border rounded-lg hover:border-blue-500 transition-colors"
           >
-            <h2 className="text-2xl font-semibold mb-2">Job History</h2>
-            <p className="text-gray-600">View past scraping jobs and results</p>
+            <h2 className="text-2xl font-semibold mb-2">Scrape History</h2>
+            <p className="text-gray-600">View all previously scraped URLs from memory</p>
           </Link>
         </div>
       </div>
