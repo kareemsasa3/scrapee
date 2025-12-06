@@ -1,3 +1,6 @@
 [submodule "arachne"]
 	path = arachne
 	url = https://github.com/kareemsasa3/arachne.git
+[submodule "ai-backend"]
+	path = ai-backend
+	url = https://github.com/kareemsasa3/ai-backend.git
