@@ -6,7 +6,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     
-    const response = await fetch(`${ARACHNE_API_URL}/api/scrape`, {
+    const response = await fetch(`${ARACHNE_API_URL}/scrape`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
