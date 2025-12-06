@@ -1,0 +1,3 @@
+[submodule "arachne"]
+	path = arachne
+	url = https://github.com/kareemsasa3/arachne.git

@@ -1,0 +1,25 @@
+services:
+  arachne:
+    build: ./arachne
+    ports:
+      - "8080:8080"
+    environment:
+      - ENV=production
+    networks:
+      - scrapee-network
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - ARACHNE_API_URL=http://arachne:8080
+      - NEXT_PUBLIC_APP_URL=http://localhost:3000
+    depends_on:
+      - arachne
+    networks:
+      - scrapee-network
+
+networks:
+  scrapee-network:
+    driver: bridge
