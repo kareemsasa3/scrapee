@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import ReactMarkdown from 'react-markdown';
+import { Trash2 } from 'lucide-react';
 
 type HistoryEntry = {
   id: string;
@@ -82,8 +83,10 @@ export default function HistoryDetailPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [diffs, setDiffs] = useState<Record<string, { loading: boolean; data?: DiffResult; error?: string }>>({});
+  const [analyses, setAnalyses] = useState<Record<string, { loading: boolean; text?: string; error?: string }>>({});
   const [selectedVersion, setSelectedVersion] = useState<VersionDetail | null>(null);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchHistory = async () => {
@@ -162,6 +165,97 @@ export default function HistoryDetailPage() {
     }
   };
 
+  const analyzeChanges = async (entryId: string) => {
+    const currentIdx = history.findIndex((h) => h.id === entryId);
+    const previous = history[currentIdx + 1];
+    if (!previous) {
+      setAnalyses((prev) => ({ ...prev, [entryId]: { loading: false, error: 'No previous version to analyze' } }));
+      return;
+    }
+
+    setAnalyses((prev) => ({ ...prev, [entryId]: { loading: true, text: '' } }));
+    // Clear any existing error before retry
+    setHistory((prev) =>
+      prev.map((h, idx) =>
+        idx === currentIdx
+          ? {
+              ...h,
+              change_summary: h.change_summary?.startsWith('Error:') ? '' : h.change_summary,
+            }
+          : h,
+      ),
+    );
+    try {
+      const res = await fetch(`${apiBase}/api/scrapes/analyze-changes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          url: decodedUrl,
+          from_timestamp: previous.scraped_at,
+          to_timestamp: history[currentIdx].scraped_at,
+        }),
+      });
+
+      if (!res.ok || !res.body) {
+        throw new Error(`Request failed (${res.status})`);
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let fullText = '';
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value || new Uint8Array(), { stream: true });
+        fullText += chunk;
+        setAnalyses((prev) => ({ ...prev, [entryId]: { loading: true, text: fullText } }));
+      }
+
+      setAnalyses((prev) => ({ ...prev, [entryId]: { loading: false, text: fullText } }));
+      setHistory((prev) =>
+        prev.map((h, idx) =>
+          idx === currentIdx
+            ? {
+                ...h,
+                change_summary: fullText,
+              }
+            : h,
+        ),
+      );
+    } catch (err) {
+      setAnalyses((prev) => ({
+        ...prev,
+        [entryId]: { loading: false, error: err instanceof Error ? err.message : 'Failed to analyze changes' },
+      }));
+    }
+  };
+
+  const deleteVersion = async (entryId: string) => {
+    if (!window.confirm('Are you sure you want to delete this version?')) return;
+    setDeletingId(entryId);
+    try {
+      const res = await fetch(`${apiBase}/api/scrapes/version/${entryId}`, { method: 'DELETE' });
+      if (!res.ok) {
+        throw new Error(`Failed to delete (status ${res.status})`);
+      }
+      setHistory((prev) => {
+        const updated = prev.filter((h) => h.id !== entryId);
+        if (updated.length <= 1) {
+          router.push('/history');
+        }
+        if (selectedVersion?.id === entryId) {
+          setSelectedVersion(null);
+        }
+        return updated;
+      });
+    } catch (err) {
+      console.error('Delete failed', err);
+      alert(err instanceof Error ? err.message : 'Failed to delete version');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   const copyURL = async () => {
     try {
       await navigator.clipboard.writeText(decodedUrl);
@@ -235,6 +329,7 @@ export default function HistoryDetailPage() {
               const previous = history[idx + 1];
               const diffState = diffs[entry.id];
               const hasPrevious = Boolean(previous);
+              const analysisState = analyses[entry.id];
               return (
                 <div key={entry.id} className="bg-white border rounded-lg p-4">
                   <div className="flex items-start justify-between gap-3">
@@ -286,13 +381,56 @@ export default function HistoryDetailPage() {
                       >
                         {hasPrevious ? 'Diff vs previous' : 'No previous version'}
                       </button>
+                      {hasPrevious &&
+                        entry.has_changes &&
+                        (!entry.change_summary || entry.change_summary.startsWith('Error:')) && (
+                        <button
+                          onClick={() => analyzeChanges(entry.id)}
+                          disabled={analysisState?.loading}
+                          className={`text-sm font-medium inline-flex items-center gap-1 ${
+                            analysisState?.loading
+                              ? 'text-gray-400 cursor-not-allowed'
+                              : 'text-purple-700 hover:text-purple-800'
+                          }`}
+                        >
+                          {analysisState?.loading
+                            ? 'Analyzing…'
+                            : entry.change_summary?.startsWith('Error:')
+                              ? 'Retry analysis'
+                              : 'Analyze changes'}
+                        </button>
+                      )}
+                      <button
+                        onClick={() => deleteVersion(entry.id)}
+                        disabled={deletingId === entry.id}
+                        className={`text-sm font-medium inline-flex items-center gap-1 ${
+                          deletingId === entry.id
+                            ? 'text-red-300 cursor-not-allowed'
+                            : 'text-red-700 hover:text-red-800'
+                        }`}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        {deletingId === entry.id ? 'Deleting…' : 'Delete'}
+                      </button>
                     </div>
                   </div>
 
-                  {entry.change_summary && (
+                  {(entry.change_summary || analysisState?.text || analysisState?.error) && (
                     <div className="mt-3 bg-purple-50 border border-purple-100 rounded-lg p-3 text-sm text-gray-800">
-                      <span className="font-medium text-purple-700">Change summary: </span>
-                      {entry.change_summary}
+                      <div className="font-medium text-purple-700 mb-1">Change summary:</div>
+                      {entry.change_summary && (
+                        <div className="prose prose-sm text-gray-900">
+                          <ReactMarkdown>{entry.change_summary}</ReactMarkdown>
+                        </div>
+                      )}
+                      {!entry.change_summary && analysisState?.text && (
+                        <div className="prose prose-sm text-gray-900 whitespace-pre-wrap">
+                          {analysisState.text}
+                        </div>
+                      )}
+                      {analysisState?.error && (
+                        <div className="text-sm text-red-600">{analysisState.error}</div>
+                      )}
                     </div>
                   )}
 

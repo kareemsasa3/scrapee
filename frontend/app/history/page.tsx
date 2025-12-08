@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { Trash2 } from 'lucide-react';
 
 interface Snapshot {
   id: string;
@@ -40,6 +41,7 @@ export default function HistoryPage() {
   const [selectedSnapshot, setSelectedSnapshot] = useState<SnapshotDetails | null>(null);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [isRescrapingId, setIsRescrapingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [expandedSummaries, setExpandedSummaries] = useState<Set<string>>(new Set());
 
   const fetchHistory = async (newOffset: number = 0) => {
@@ -170,6 +172,27 @@ export default function HistoryPage() {
   const truncateSummary = (summary: string, maxLength: number = 200): string => {
     if (summary.length <= maxLength) return summary;
     return summary.substring(0, maxLength) + '...';
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!window.confirm('Are you sure you want to delete this version?')) return;
+    setDeletingId(id);
+    try {
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_ARACHNE_API_URL || 'http://localhost:8080'}/api/scrapes/version/${id}`,
+        { method: 'DELETE' },
+      );
+      if (!res.ok) {
+        throw new Error(`Failed to delete (status ${res.status})`);
+      }
+      setSnapshots((prev) => prev.filter((s) => s.id !== id));
+      setTotal((prev) => Math.max(0, prev - 1));
+    } catch (err) {
+      console.error('Delete failed', err);
+      alert(err instanceof Error ? err.message : 'Failed to delete version');
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   const totalPages = Math.ceil(total / limit);
@@ -414,6 +437,18 @@ export default function HistoryPage() {
                       </svg>
                       View history
                     </Link>
+                    <button
+                      onClick={() => handleDelete(snapshot.id)}
+                      disabled={deletingId === snapshot.id}
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors text-sm font-medium ${
+                        deletingId === snapshot.id
+                          ? 'bg-red-100 text-red-400 cursor-not-allowed'
+                          : 'bg-red-50 hover:bg-red-100 text-red-700'
+                      }`}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      {deletingId === snapshot.id ? 'Deleting…' : 'Delete'}
+                    </button>
                   </div>
                 </div>
               ))}
