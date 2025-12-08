@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Trash2 } from 'lucide-react';
@@ -43,8 +43,10 @@ export default function HistoryPage() {
   const [isRescrapingId, setIsRescrapingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [expandedSummaries, setExpandedSummaries] = useState<Set<string>>(new Set());
+  const panelClass =
+    'rounded-lg border border-white/10 bg-white/5 shadow-sm backdrop-blur-sm supports-[backdrop-filter]:backdrop-blur-sm';
 
-  const fetchHistory = async (newOffset: number = 0) => {
+  const fetchHistory = useCallback(async (newOffset: number = 0) => {
     try {
       setIsLoading(true);
       setError(null);
@@ -68,11 +70,11 @@ export default function HistoryPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [limit]);
 
   useEffect(() => {
     fetchHistory(0);
-  }, []);
+  }, [fetchHistory]);
 
   const formatTimeAgo = (hours: number): string => {
     if (hours < 1) {
@@ -179,7 +181,7 @@ export default function HistoryPage() {
     setDeletingId(id);
     try {
       const res = await fetch(
-        `${process.env.NEXT_PUBLIC_ARACHNE_API_URL || 'http://localhost:8080'}/api/scrapes/version/${id}`,
+        `${process.env.NEXT_PUBLIC_ARACHNE_API_URL || 'http://localhost:8080'}/memory/version/${id}`,
         { method: 'DELETE' },
       );
       if (!res.ok) {
@@ -203,9 +205,9 @@ export default function HistoryPage() {
       <main className="min-h-screen p-8">
         <div className="max-w-6xl mx-auto">
           <div className="flex items-center justify-center py-12">
-            <div className="flex flex-col items-center gap-4">
+            <div className={`flex flex-col items-center gap-4 ${panelClass} px-6 py-4`}>
               <svg
-                className="animate-spin h-12 w-12 text-blue-600"
+                className="animate-spin h-12 w-12 text-blue-400"
                 xmlns="http://www.w3.org/2000/svg"
                 fill="none"
                 viewBox="0 0 24 24"
@@ -224,7 +226,7 @@ export default function HistoryPage() {
                   d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                 ></path>
               </svg>
-              <p className="text-gray-600">Loading scrape history...</p>
+              <p className="text-white/80">Loading scrape history...</p>
             </div>
           </div>
         </div>
@@ -234,25 +236,19 @@ export default function HistoryPage() {
 
   return (
     <main className="min-h-screen p-8">
-      <div className="max-w-6xl mx-auto">
+      <div className="max-w-6xl mx-auto space-y-6">
         {/* Header */}
-        <div className="mb-6">
-          <Link
-            href="/"
-            className="text-blue-600 hover:text-blue-700 mb-4 inline-block"
-          >
-            ← Back to Home
-          </Link>
+        <div className={`${panelClass} p-4 md:p-6`}>
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-4xl font-bold mb-2">Scrape History</h1>
-              <p className="text-gray-600">
+              <p className="text-white/80">
                 View all previously scraped URLs from memory
               </p>
             </div>
             <button
               onClick={() => fetchHistory(offset)}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg transition-colors text-sm font-medium"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-500/20 hover:bg-blue-500/30 text-blue-100 rounded-lg transition-colors text-sm font-medium border border-blue-300/30"
             >
               <svg
                 className="w-4 h-4"
@@ -273,15 +269,15 @@ export default function HistoryPage() {
         </div>
 
         {/* Stats */}
-        <div className="bg-white border rounded-lg p-4 mb-6">
+        <div className={`${panelClass} p-4`}>
           <div className="flex items-center gap-6 text-sm">
             <div>
-              <span className="text-gray-600">Total Snapshots:</span>
-              <span className="ml-2 font-semibold text-gray-900">{total}</span>
+              <span className="text-white/80">Total Snapshots:</span>
+              <span className="ml-2 font-semibold text-white">{total}</span>
             </div>
             <div>
-              <span className="text-gray-600">Showing:</span>
-              <span className="ml-2 font-semibold text-gray-900">
+              <span className="text-white/80">Showing:</span>
+              <span className="ml-2 font-semibold text-white">
                 {offset + 1}-{Math.min(offset + limit, total)} of {total}
               </span>
             </div>
@@ -290,19 +286,19 @@ export default function HistoryPage() {
 
         {/* Error State */}
         {error && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-6 mb-6">
-            <h2 className="text-xl font-semibold text-red-800 mb-2">Error</h2>
-            <p className="text-red-700 mb-4">{error}</p>
+          <div className={`${panelClass} p-6 bg-red-500/10 border-red-200/50`}>
+            <h2 className="text-xl font-semibold text-red-100 mb-2">Error</h2>
+            <p className="text-red-100 mb-4">{error}</p>
             <div className="flex gap-4">
               <button
                 onClick={() => fetchHistory(offset)}
-                className="text-blue-600 hover:text-blue-700 font-medium"
+                className="text-blue-200 hover:text-blue-100 font-medium"
               >
                 Retry
               </button>
               <Link
                 href="/"
-                className="text-blue-600 hover:text-blue-700 font-medium"
+                className="text-blue-200 hover:text-blue-100 font-medium"
               >
                 Back to Home
               </Link>
@@ -312,17 +308,17 @@ export default function HistoryPage() {
 
         {/* Snapshots List */}
         {!error && snapshots.length > 0 && (
-          <div className="bg-white border rounded-lg p-6 mb-6">
+          <div className={`${panelClass} p-6`}>
             <div className="space-y-3">
               {snapshots.map((snapshot) => (
                 <div
                   key={snapshot.id}
-                  className="border rounded-lg p-4 hover:border-blue-300 transition-colors"
+                  className="border border-white/10 rounded-lg p-4 bg-white/5 hover:border-blue-300/60 transition-colors backdrop-blur-sm supports-[backdrop-filter]:backdrop-blur-sm"
                 >
                   <div className="flex items-start justify-between mb-2">
                     <div className="flex-1 mr-4">
                       <div className="flex items-center gap-2 mb-1">
-                        <h3 className="font-medium text-lg text-gray-900">
+                        <h3 className="font-medium text-lg text-white">
                           {snapshot.title || 'No title'}
                         </h3>
                         <span
@@ -335,10 +331,10 @@ export default function HistoryPage() {
                           {snapshot.status_code}
                         </span>
                       </div>
-                      <p className="text-sm text-gray-600 mb-1">
+                      <p className="text-sm text-white/80 mb-1">
                         <span className="font-medium">{snapshot.domain}</span>
                       </p>
-                      <p className="text-xs text-gray-500 break-all">
+                      <p className="text-xs text-white/80 break-all">
                         {snapshot.url}
                       </p>
                     </div>
@@ -352,7 +348,7 @@ export default function HistoryPage() {
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                         </svg>
                         <div className="flex-1">
-                          <p className="text-sm text-gray-700 italic">
+                          <p className="text-sm text-white/80 italic">
                             {expandedSummaries.has(snapshot.id) 
                               ? snapshot.summary 
                               : truncateSummary(snapshot.summary, 200)}
@@ -371,7 +367,7 @@ export default function HistoryPage() {
                   )}
 
                   {/* Metadata */}
-                  <div className="flex gap-4 text-xs text-gray-600 mb-3 flex-wrap">
+                  <div className="flex gap-4 text-xs text-white/80 mb-3 flex-wrap">
                     <div className="flex items-center gap-1">
                       <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -458,14 +454,14 @@ export default function HistoryPage() {
 
         {/* Pagination */}
         {!error && totalPages > 1 && (
-          <div className="bg-white border rounded-lg p-4 flex items-center justify-between">
+          <div className={`${panelClass} p-4 flex items-center justify-between`}>
             <button
               onClick={() => fetchHistory(Math.max(0, offset - limit))}
               disabled={offset === 0 || isLoading}
               className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                 offset === 0 || isLoading
-                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                  : 'bg-blue-50 hover:bg-blue-100 text-blue-700'
+                  ? 'bg-white/5 text-white/40 cursor-not-allowed'
+                  : 'bg-blue-500/15 hover:bg-blue-500/25 text-blue-100'
               }`}
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -474,7 +470,7 @@ export default function HistoryPage() {
               Previous
             </button>
 
-            <span className="text-sm text-gray-600">
+            <span className="text-sm text-white/80">
               Page {currentPage} of {totalPages}
             </span>
 
@@ -483,8 +479,8 @@ export default function HistoryPage() {
               disabled={offset + limit >= total || isLoading}
               className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                 offset + limit >= total || isLoading
-                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                  : 'bg-blue-50 hover:bg-blue-100 text-blue-700'
+                  ? 'bg-white/5 text-white/40 cursor-not-allowed'
+                  : 'bg-blue-500/15 hover:bg-blue-500/25 text-blue-100'
               }`}
             >
               Next
@@ -497,9 +493,9 @@ export default function HistoryPage() {
 
         {/* Empty State */}
         {!error && !isLoading && snapshots.length === 0 && (
-          <div className="bg-gray-50 border border-gray-200 rounded-lg p-12 text-center">
+          <div className={`${panelClass} p-12 text-center`}>
             <svg
-              className="w-16 h-16 text-gray-400 mx-auto mb-4"
+              className="w-16 h-16 text-white/60 mx-auto mb-4"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -511,15 +507,15 @@ export default function HistoryPage() {
                 d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
               />
             </svg>
-            <h2 className="text-xl font-semibold text-gray-900 mb-2">
+            <h2 className="text-xl font-semibold text-white mb-2">
               No scraping history yet
             </h2>
-            <p className="text-gray-600 mb-6">
+            <p className="text-white/80 mb-6">
               Start by creating your first scraping job
             </p>
             <Link
               href="/jobs"
-              className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium"
+              className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600/80 hover:bg-blue-600 text-white rounded-lg transition-colors font-medium"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -532,25 +528,25 @@ export default function HistoryPage() {
         {/* Details Modal */}
         {selectedSnapshot && (
           <div
-            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50"
+            className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50"
             onClick={() => setSelectedSnapshot(null)}
           >
             <div
-              className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto"
+              className="bg-white/10 border border-white/15 rounded-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto shadow-2xl backdrop-blur-md supports-[backdrop-filter]:backdrop-blur-md"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="sticky top-0 bg-white border-b p-6 flex items-start justify-between">
+              <div className="sticky top-0 bg-black/30 border-b border-white/10 backdrop-blur-md p-6 flex items-start justify-between">
                 <div className="flex-1 mr-4">
-                  <h2 className="text-2xl font-bold text-gray-900 mb-2">
+                  <h2 className="text-2xl font-bold text-white mb-2">
                     Snapshot Details
                   </h2>
-                  <p className="text-sm text-gray-600 break-all">
+                  <p className="text-sm text-white/80 break-all">
                     {selectedSnapshot.url}
                   </p>
                 </div>
                 <button
                   onClick={() => setSelectedSnapshot(null)}
-                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                  className="text-white/60 hover:text-white transition-colors"
                 >
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -558,40 +554,40 @@ export default function HistoryPage() {
                 </button>
               </div>
 
-              <div className="p-6">
+              <div className="p-6 space-y-6">
                 {/* Metadata Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                   <div>
-                    <h3 className="text-sm font-medium text-gray-500 mb-1">Title</h3>
-                    <p className="text-sm text-gray-900">{selectedSnapshot.title || 'No title'}</p>
+                    <h3 className="text-sm font-medium text-white/70 mb-1">Title</h3>
+                    <p className="text-sm text-white">{selectedSnapshot.title || 'No title'}</p>
                   </div>
                   <div>
-                    <h3 className="text-sm font-medium text-gray-500 mb-1">Domain</h3>
-                    <p className="text-sm text-gray-900">{selectedSnapshot.domain}</p>
+                    <h3 className="text-sm font-medium text-white/70 mb-1">Domain</h3>
+                    <p className="text-sm text-white">{selectedSnapshot.domain}</p>
                   </div>
                   <div>
-                    <h3 className="text-sm font-medium text-gray-500 mb-1">Status Code</h3>
-                    <p className="text-sm text-gray-900">{selectedSnapshot.status_code}</p>
+                    <h3 className="text-sm font-medium text-white/70 mb-1">Status Code</h3>
+                    <p className="text-sm text-white">{selectedSnapshot.status_code}</p>
                   </div>
                   <div>
-                    <h3 className="text-sm font-medium text-gray-500 mb-1">Snapshot ID</h3>
-                    <p className="text-sm text-gray-900 font-mono break-all">{selectedSnapshot.id}</p>
+                    <h3 className="text-sm font-medium text-white/70 mb-1">Snapshot ID</h3>
+                    <p className="text-sm text-white font-mono break-all">{selectedSnapshot.id}</p>
                   </div>
                   <div>
-                    <h3 className="text-sm font-medium text-gray-500 mb-1">Scraped At</h3>
-                    <p className="text-sm text-gray-900">{formatDate(selectedSnapshot.scraped_at)}</p>
+                    <h3 className="text-sm font-medium text-white/70 mb-1">Scraped At</h3>
+                    <p className="text-sm text-white">{formatDate(selectedSnapshot.scraped_at)}</p>
                   </div>
                   <div>
-                    <h3 className="text-sm font-medium text-gray-500 mb-1">Last Checked At</h3>
-                    <p className="text-sm text-gray-900">{formatDate(selectedSnapshot.last_checked_at)}</p>
+                    <h3 className="text-sm font-medium text-white/70 mb-1">Last Checked At</h3>
+                    <p className="text-sm text-white">{formatDate(selectedSnapshot.last_checked_at)}</p>
                   </div>
                   <div>
-                    <h3 className="text-sm font-medium text-gray-500 mb-1">Age</h3>
-                    <p className="text-sm text-gray-900">{formatTimeAgo(selectedSnapshot.age_hours)}</p>
+                    <h3 className="text-sm font-medium text-white/70 mb-1">Age</h3>
+                    <p className="text-sm text-white">{formatTimeAgo(selectedSnapshot.age_hours)}</p>
                   </div>
                   <div>
-                    <h3 className="text-sm font-medium text-gray-500 mb-1">Content Hash</h3>
-                    <p className="text-sm text-gray-900 font-mono break-all">{selectedSnapshot.content_hash}</p>
+                    <h3 className="text-sm font-medium text-white/70 mb-1">Content Hash</h3>
+                    <p className="text-sm text-white font-mono break-all">{selectedSnapshot.content_hash}</p>
                   </div>
                 </div>
 
@@ -599,13 +595,13 @@ export default function HistoryPage() {
                 {selectedSnapshot.summary && (
                   <div className="mb-6">
                     <div className="flex items-center gap-2 mb-2">
-                      <svg className="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-4 h-4 text-purple-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                       </svg>
-                      <h3 className="text-sm font-medium text-gray-900">AI Summary</h3>
+                      <h3 className="text-sm font-medium text-white">AI Summary</h3>
                     </div>
-                    <div className="bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-lg p-4">
-                      <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">
+                    <div className="bg-white/5 border border-white/10 rounded-lg p-4 backdrop-blur-sm supports-[backdrop-filter]:backdrop-blur-sm">
+                      <p className="text-sm text-white/90 whitespace-pre-wrap leading-relaxed">
                         {selectedSnapshot.summary}
                       </p>
                     </div>
@@ -615,24 +611,24 @@ export default function HistoryPage() {
                 {/* Content Preview */}
                 {selectedSnapshot.clean_text && (
                   <div>
-                    <h3 className="text-sm font-medium text-gray-500 mb-2">Content Preview (first 500 characters)</h3>
-                    <div className="bg-gray-50 border rounded-lg p-4">
-                      <p className="text-sm text-gray-700 whitespace-pre-wrap">
+                    <h3 className="text-sm font-medium text-white/70 mb-2">Content Preview (first 500 characters)</h3>
+                    <div className="bg-white/5 border border-white/10 rounded-lg p-4 backdrop-blur-sm supports-[backdrop-filter]:backdrop-blur-sm">
+                      <p className="text-sm text-white/90 whitespace-pre-wrap">
                         {selectedSnapshot.clean_text.substring(0, 500)}
                         {selectedSnapshot.clean_text.length > 500 ? '...' : ''}
                       </p>
                     </div>
-                    <p className="text-xs text-gray-500 mt-2">
+                    <p className="text-xs text-white/60 mt-2">
                       Total content length: {selectedSnapshot.clean_text.length.toLocaleString()} characters
                     </p>
                   </div>
                 )}
               </div>
 
-              <div className="sticky bottom-0 bg-gray-50 border-t p-6 flex justify-end gap-3">
+              <div className="sticky bottom-0 bg-black/30 border-t border-white/10 backdrop-blur-md p-6 flex justify-end gap-3">
                 <button
                   onClick={() => setSelectedSnapshot(null)}
-                  className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors font-medium"
+                  className="px-4 py-2 text-white bg-white/10 border border-white/20 rounded-lg hover:bg-white/20 transition-colors font-medium"
                 >
                   Close
                 </button>
@@ -641,7 +637,7 @@ export default function HistoryPage() {
                     handleRescrape(selectedSnapshot.url, selectedSnapshot.id);
                     setSelectedSnapshot(null);
                   }}
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors font-medium"
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-green-600/80 hover:bg-green-600 text-white rounded-lg transition-colors font-medium border border-green-300/30 shadow"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />

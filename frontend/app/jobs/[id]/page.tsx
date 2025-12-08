@@ -3,16 +3,8 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-
-interface ScrapedData {
-  url: string;
-  title: string;
-  status: number;
-  size: number;
-  error?: string;
-  scraped: string;
-  content?: string;
-}
+import DOMPurify from 'isomorphic-dompurify';
+import { useJobStatus } from '@/lib/hooks/useJobStatus';
 
 interface ContentViewState {
   [key: number]: {
@@ -22,34 +14,17 @@ interface ContentViewState {
   };
 }
 
-interface Job {
-  id: string;
-  status: 'pending' | 'running' | 'completed' | 'failed';
-  request: {
-    urls: string[];
-    site_url?: string;
-  };
-  results?: ScrapedData[];
-  error?: string;
-  created_at: string;
-  started_at?: string;
-  completed_at?: string;
-  progress: number;
-}
-
-interface JobResponse {
-  job: Job;
-  metrics?: any;
-}
-
 export default function JobStatusPage() {
   const params = useParams();
   const jobId = params.id as string;
   
-  const [job, setJob] = useState<Job | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [isPolling, setIsPolling] = useState(false);
+  const {
+    job,
+    progress,
+    error,
+    isLoading,
+    isPolling,
+  } = useJobStatus(jobId);
   const [contentViewState, setContentViewState] = useState<ContentViewState>({});
   const [copySuccess, setCopySuccess] = useState<number | null>(null);
   const [previousResultCount, setPreviousResultCount] = useState(0);
@@ -59,109 +34,41 @@ export default function JobStatusPage() {
   const [summaryError, setSummaryError] = useState<string | null>(null);
   const [isSummaryExpanded, setIsSummaryExpanded] = useState(true);
 
-  const fetchJob = async () => {
-    try {
-      console.log(`Fetching job details for ID: ${jobId}`);
-      const response = await fetch(`/api/jobs/${jobId}`, {
-        cache: 'no-store', // Disable caching
-      });
-      
-      console.log(`Response status: ${response.status}`);
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error('Error data:', errorData);
-        throw new Error(errorData.error || 'Failed to fetch job');
-      }
-
-      const data: JobResponse = await response.json();
-      console.log('Job data received:', data);
-      
-      // Track new results
-      const newResultCount = data.job.results?.length || 0;
-      if (newResultCount > previousResultCount) {
-        console.log(`New results detected: ${newResultCount - previousResultCount} new items`);
-        // Mark new results with indices
-        const newIndices = new Set<number>();
-        for (let i = previousResultCount; i < newResultCount; i++) {
-          newIndices.add(i);
-        }
-        setNewResultIndices(newIndices);
-        
-        // Clear "new" badges after 5 seconds
-        setTimeout(() => {
-          setNewResultIndices(new Set());
-        }, 5000);
-        
-        setPreviousResultCount(newResultCount);
-      } else if (newResultCount === 0) {
-        setPreviousResultCount(0);
-      }
-      
-      setJob(data.job);
-      setError(null);
-      return data.job;
-    } catch (err) {
-      console.error('Error fetching job:', err);
-      setError(err instanceof Error ? err.message : 'Failed to fetch job');
-      return null;
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Initial fetch
+  // Track new results when job updates
   useEffect(() => {
-    fetchJob();
-  }, [jobId]);
+    const newResultCount = job?.results?.length || 0;
+    if (!job) return;
 
-  // Polling effect
-  useEffect(() => {
-    let intervalId: NodeJS.Timeout | null = null;
-
-    // Only poll if job is pending or running
-    if (job && (job.status === 'pending' || job.status === 'running')) {
-      setIsPolling(true);
-      console.log('Starting polling for job status updates...');
-      
-      intervalId = setInterval(async () => {
-        const updatedJob = await fetchJob();
-        
-        // If job is now completed or failed, stop polling
-        if (updatedJob && (updatedJob.status === 'completed' || updatedJob.status === 'failed')) {
-          console.log('Job finished, stopping polling');
-          setIsPolling(false);
-          if (intervalId) {
-            clearInterval(intervalId);
-          }
-        }
-      }, 2000); // Poll every 2 seconds
-    } else {
-      setIsPolling(false);
-    }
-
-    // Cleanup function
-    return () => {
-      if (intervalId) {
-        console.log('Cleaning up polling interval');
-        clearInterval(intervalId);
-        setIsPolling(false);
+    if (newResultCount > previousResultCount) {
+      const newIndices = new Set<number>();
+      for (let i = previousResultCount; i < newResultCount; i++) {
+        newIndices.add(i);
       }
-    };
-  }, [job?.status, jobId]);
+      setNewResultIndices(newIndices);
+
+      // Clear "new" badges after 5 seconds
+      setTimeout(() => {
+        setNewResultIndices(new Set());
+      }, 5000);
+
+      setPreviousResultCount(newResultCount);
+    } else if (newResultCount === 0) {
+      setPreviousResultCount(0);
+    }
+  }, [job, previousResultCount]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'pending':
-        return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+        return 'bg-yellow-500/15 text-yellow-100 border-yellow-400/40';
       case 'running':
-        return 'bg-blue-100 text-blue-800 border-blue-200';
+        return 'bg-blue-500/15 text-blue-100 border-blue-400/40';
       case 'completed':
-        return 'bg-green-100 text-green-800 border-green-200';
+        return 'bg-green-500/20 text-green-100 border-green-400/40';
       case 'failed':
-        return 'bg-red-100 text-red-800 border-red-200';
+        return 'bg-red-500/15 text-red-100 border-red-400/40';
       default:
-        return 'bg-gray-100 text-gray-800 border-gray-200';
+        return 'bg-white/10 text-white border-white/20';
     }
   };
 
@@ -280,7 +187,7 @@ export default function JobStatusPage() {
                 if (data.done && data.fullSummary) {
                   setSummary(data.fullSummary);
                 }
-              } catch (parseError) {
+              } catch {
                 // Ignore parse errors for incomplete chunks
                 if (line.slice(6).trim()) {
                   console.debug('Skipping incomplete SSE chunk');
@@ -306,41 +213,55 @@ export default function JobStatusPage() {
   };
 
   const sanitizeHTML = (html: string) => {
-    // Basic sanitization - remove script tags and event handlers
-    return html
-      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
-      .replace(/on\w+="[^"]*"/gi, '')
-      .replace(/on\w+='[^']*'/gi, '');
+    // Extract body content if the input is a full HTML document
+    let contentToSanitize = html;
+    const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+    if (bodyMatch) {
+      contentToSanitize = bodyMatch[1];
+    }
+
+    return DOMPurify.sanitize(contentToSanitize, {
+      ALLOWED_TAGS: [
+        'p', 'br', 'strong', 'em', 'u', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+        'ul', 'ol', 'li', 'a', 'img', 'div', 'span', 'table', 'thead', 'tbody',
+        'tr', 'td', 'th', 'blockquote', 'code', 'pre', 'section', 'article',
+        'header', 'footer', 'nav', 'main', 'aside', 'figure', 'figcaption',
+        'b', 'i', 'small', 'sub', 'sup', 'mark', 'del', 'ins', 'hr',
+      ],
+      ALLOWED_ATTR: ['href', 'src', 'alt', 'title', 'class', 'id', 'target', 'rel'],
+      ALLOW_DATA_ATTR: false,
+    });
   };
+
+  const panelClass =
+    'rounded-lg border border-white/10 bg-white/10 shadow-lg backdrop-blur-md supports-[backdrop-filter]:backdrop-blur-md';
 
   if (isLoading) {
     return (
-      <main className="min-h-screen p-8">
-        <div className="max-w-4xl mx-auto">
-          <div className="flex items-center justify-center py-12">
-            <div className="flex flex-col items-center gap-4">
-              <svg
-                className="animate-spin h-12 w-12 text-blue-600"
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-              >
-                <circle
-                  className="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  strokeWidth="4"
-                ></circle>
-                <path
-                  className="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                ></path>
-              </svg>
-              <p className="text-gray-600">Loading job details...</p>
-            </div>
+      <main className="min-h-screen bg-transparent text-white">
+        <div className="mx-auto flex max-w-5xl items-center justify-center px-4 py-16">
+          <div className="flex flex-col items-center gap-4">
+            <svg
+              className="h-12 w-12 animate-spin text-blue-400"
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+            >
+              <circle
+                className="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                strokeWidth="4"
+              ></circle>
+              <path
+                className="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+              ></path>
+            </svg>
+            <p className="text-slate-200">Loading job details...</p>
           </div>
         </div>
       </main>
@@ -349,17 +270,17 @@ export default function JobStatusPage() {
 
   if (error || !job) {
     return (
-      <main className="min-h-screen p-8">
-        <div className="max-w-4xl mx-auto">
-          <div className="bg-red-50 border border-red-200 rounded-lg p-6">
-            <h2 className="text-xl font-semibold text-red-800 mb-2">Error</h2>
-            <p className="text-red-700 mb-4">{error || 'Job not found'}</p>
+      <main className="min-h-screen bg-transparent text-white">
+        <div className="mx-auto max-w-5xl px-4 py-10">
+          <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-6 shadow-md">
+            <h2 className="mb-2 text-xl font-semibold text-red-100">Error</h2>
+            <p className="mb-4 text-red-50">{error || 'Job not found'}</p>
             
-            <div className="bg-white border border-red-300 rounded p-4 mb-4">
-              <p className="text-sm font-semibold text-gray-700 mb-2">Debug Information:</p>
-              <ul className="text-xs text-gray-600 space-y-1">
-                <li>• Job ID: <code className="bg-gray-100 px-1 rounded">{jobId}</code></li>
-                <li>• API Endpoint: <code className="bg-gray-100 px-1 rounded">/api/jobs/{jobId}</code></li>
+            <div className="mb-4 rounded border border-red-500/30 bg-red-500/10 p-4">
+              <p className="mb-2 text-sm font-semibold text-red-100/90">Debug Information:</p>
+              <ul className="space-y-1 text-xs text-red-50/80">
+                <li>• Job ID: <code className="rounded bg-white/10 px-1">{jobId}</code></li>
+                <li>• API Endpoint: <code className="rounded bg-white/10 px-1">/api/scrape/status?id={jobId}</code></li>
                 <li>• Check the browser console for more details</li>
                 <li>• Make sure the Arachne backend is running on port 8080</li>
               </ul>
@@ -368,13 +289,13 @@ export default function JobStatusPage() {
             <div className="flex gap-4">
               <Link
                 href="/"
-                className="text-blue-600 hover:text-blue-700 font-medium"
+                className="font-medium text-blue-200 hover:text-white"
               >
                 ← Back to Home
               </Link>
               <Link
                 href="/jobs"
-                className="text-blue-600 hover:text-blue-700 font-medium"
+                className="font-medium text-blue-200 hover:text-white"
               >
                 Create New Job
               </Link>
@@ -385,26 +306,28 @@ export default function JobStatusPage() {
     );
   }
 
+  const progressValue = job?.progress ?? progress ?? 0;
+
   return (
-    <main className="min-h-screen p-8">
-      <div className="max-w-4xl mx-auto">
+    <main className="min-h-screen bg-transparent text-white">
+      <div className="mx-auto max-w-5xl px-4 py-8">
         {/* Header */}
         <div className="mb-6">
           <Link
             href="/"
-            className="text-blue-600 hover:text-blue-700 mb-4 inline-block"
+            className="mb-4 inline-block text-blue-200 hover:text-white"
           >
             ← Back to Home
           </Link>
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-4xl font-bold mb-2">Job Details</h1>
-              <p className="text-gray-600">View scraping job status and details</p>
+              <h1 className="mb-1 text-3xl font-semibold">Job Details</h1>
+              <p className="text-sm text-slate-300">View scraping job status and details</p>
             </div>
             {isPolling && (
-              <div className="flex items-center gap-2 text-sm text-blue-600">
+              <div className="flex items-center gap-2 text-sm text-blue-200">
                 <svg
-                  className="animate-spin h-4 w-4"
+                  className="h-4 w-4 animate-spin"
                   xmlns="http://www.w3.org/2000/svg"
                   fill="none"
                   viewBox="0 0 24 24"
@@ -430,14 +353,14 @@ export default function JobStatusPage() {
         </div>
 
         {/* Job Status Card */}
-        <div className="bg-white border rounded-lg p-6 mb-6">
+        <div className={`${panelClass} mb-6 text-white/90`}>
           <div className="flex items-start justify-between mb-4">
             <div>
-              <h2 className="text-sm font-medium text-gray-500 mb-1">Job ID</h2>
-              <p className="text-lg font-mono text-gray-900">{job.id}</p>
+              <h2 className="text-sm font-medium text-slate-200/80 mb-1">Job ID</h2>
+              <p className="text-lg font-mono text-white">{job.id}</p>
             </div>
             <span
-              className={`px-4 py-2 rounded-full text-sm font-medium border ${getStatusColor(
+              className={`px-4 py-2 rounded-full text-sm font-semibold border ${getStatusColor(
                 job.status
               )}`}
             >
@@ -448,14 +371,14 @@ export default function JobStatusPage() {
           {/* Progress Bar */}
           {job.status === 'running' && (
             <div className="mb-4">
-              <div className="flex justify-between text-sm text-gray-600 mb-1">
+            <div className="mb-1 flex justify-between text-sm text-slate-200/90">
                 <span>Progress</span>
-                <span>{job.progress}%</span>
+                <span>{progressValue}%</span>
               </div>
-              <div className="w-full bg-gray-200 rounded-full h-2">
+            <div className="h-2 w-full rounded-full bg-white/10">
                 <div
-                  className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                  style={{ width: `${job.progress}%` }}
+                  className="h-2 rounded-full bg-blue-600 transition-all duration-300"
+                  style={{ width: `${progressValue}%` }}
                 ></div>
               </div>
             </div>
@@ -464,32 +387,32 @@ export default function JobStatusPage() {
           {/* Timestamps */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
             <div>
-              <h3 className="text-sm font-medium text-gray-500 mb-1">Created</h3>
-              <p className="text-sm text-gray-900">{formatDate(job.created_at)}</p>
+              <h3 className="text-sm font-medium text-slate-200/80 mb-1">Created</h3>
+              <p className="text-sm text-white/90">{formatDate(job.created_at)}</p>
             </div>
             {job.started_at && (
               <div>
-                <h3 className="text-sm font-medium text-gray-500 mb-1">Started</h3>
-                <p className="text-sm text-gray-900">{formatDate(job.started_at)}</p>
+                <h3 className="text-sm font-medium text-slate-200/80 mb-1">Started</h3>
+                <p className="text-sm text-white/90">{formatDate(job.started_at)}</p>
               </div>
             )}
             {job.completed_at && (
               <div>
-                <h3 className="text-sm font-medium text-gray-500 mb-1">
+                <h3 className="text-sm font-medium text-slate-200/80 mb-1">
                   Completed
                 </h3>
-                <p className="text-sm text-gray-900">{formatDate(job.completed_at)}</p>
+                <p className="text-sm text-white/90">{formatDate(job.completed_at)}</p>
               </div>
             )}
           </div>
 
           {/* URLs Being Scraped */}
           <div>
-            <h3 className="text-sm font-medium text-gray-500 mb-2">
+            <h3 className="mb-2 text-sm font-medium text-slate-200/80">
               {job.request.site_url ? 'Site URL' : 'URLs'}
             </h3>
             {job.request.site_url ? (
-              <p className="text-sm text-gray-900 bg-gray-50 p-2 rounded border break-all">
+              <p className="break-all rounded border border-white/10 bg-white/5 p-2 text-sm text-white/90">
                 {job.request.site_url}
               </p>
             ) : (
@@ -497,7 +420,7 @@ export default function JobStatusPage() {
                 {job.request.urls.map((url, index) => (
                   <p
                     key={index}
-                    className="text-sm text-gray-900 bg-gray-50 p-2 rounded border break-all"
+                    className="break-all rounded border border-white/10 bg-white/5 p-2 text-sm text-white/90"
                   >
                     {url}
                   </p>
@@ -508,16 +431,16 @@ export default function JobStatusPage() {
 
           {/* Error Message */}
           {job.error && (
-            <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded">
-              <h3 className="text-sm font-medium text-red-800 mb-1">Error</h3>
-              <p className="text-sm text-red-700">{job.error}</p>
+          <div className="mt-4 rounded border border-red-400/30 bg-red-500/10 p-4">
+            <h3 className="mb-1 text-sm font-medium text-red-100">Error</h3>
+            <p className="text-sm text-red-200">{job.error}</p>
             </div>
           )}
         </div>
 
         {/* AI Summary Section - Appears above Results */}
         {job.status === 'completed' && job.results && job.results.length > 0 && (
-          <div className="bg-white border rounded-lg p-6 mb-6">
+          <div className={`${panelClass} mb-6 text-white/90`}>
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-gradient-to-r from-purple-600 to-blue-600 flex items-center justify-center">
@@ -525,13 +448,13 @@ export default function JobStatusPage() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                   </svg>
                 </div>
-                <h2 className="text-xl font-semibold text-gray-900">AI Summary</h2>
+                <h2 className="text-xl font-semibold text-white">AI Summary</h2>
               </div>
               <div className="flex items-center gap-3">
                 {summary && !isSummarizing && (
                   <button
                     onClick={() => setIsSummaryExpanded(!isSummaryExpanded)}
-                    className="text-sm text-gray-600 hover:text-gray-900 font-medium"
+                    className="text-sm text-slate-200 hover:text-white font-medium"
                   >
                     {isSummaryExpanded ? 'Collapse' : 'Expand'}
                   </button>
@@ -564,7 +487,7 @@ export default function JobStatusPage() {
             {isSummarizing && !summary && (
               <div className="flex flex-col items-center justify-center py-8 gap-4">
                 <svg
-                  className="animate-spin h-10 w-10 text-purple-600"
+                  className="animate-spin h-10 w-10 text-purple-400"
                   xmlns="http://www.w3.org/2000/svg"
                   fill="none"
                   viewBox="0 0 24 24"
@@ -583,21 +506,21 @@ export default function JobStatusPage() {
                     d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                   ></path>
                 </svg>
-                <p className="text-gray-600 font-medium">Generating AI summary...</p>
-                <p className="text-sm text-gray-500">Content will appear in real-time</p>
+                <p className="text-slate-100 font-medium">Generating AI summary...</p>
+                <p className="text-sm text-slate-300/80">Content will appear in real-time</p>
               </div>
             )}
 
             {/* Error State */}
             {summaryError && !isSummarizing && (
-              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+              <div className="bg-red-500/10 border border-red-400/30 rounded-lg p-4">
                 <div className="flex items-start gap-3">
-                  <svg className="w-5 h-5 text-red-600 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-5 h-5 text-red-200 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                   <div className="flex-1">
-                    <h3 className="text-sm font-medium text-red-800 mb-1">Failed to generate summary</h3>
-                    <p className="text-sm text-red-700">{summaryError}</p>
+                    <h3 className="text-sm font-medium text-red-100 mb-1">Failed to generate summary</h3>
+                    <p className="text-sm text-red-200">{summaryError}</p>
                   </div>
                 </div>
               </div>
@@ -605,10 +528,10 @@ export default function JobStatusPage() {
 
             {/* Summary Content - Shows during streaming and after completion */}
             {summary && isSummaryExpanded && (
-              <div className="prose prose-sm max-w-none">
-                <div className={`bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-lg p-6 ${isSummarizing ? 'animate-pulse' : ''}`}>
+              <div className="prose prose-sm prose-invert max-w-none text-slate-100">
+                <div className={`bg-gradient-to-r from-purple-500/20 to-blue-500/20 border border-purple-400/30 rounded-lg p-6 ${isSummarizing ? 'animate-pulse' : ''}`}>
                   {isSummarizing && (
-                    <div className="flex items-center gap-2 mb-3 text-sm text-purple-600">
+                    <div className="flex items-center gap-2 mb-3 text-sm text-purple-200">
                       <svg
                         className="animate-spin h-4 w-4"
                         xmlns="http://www.w3.org/2000/svg"
@@ -621,7 +544,7 @@ export default function JobStatusPage() {
                       <span className="font-medium">Generating...</span>
                     </div>
                   )}
-                  <div className="whitespace-pre-wrap text-gray-800 leading-relaxed">
+                  <div className="whitespace-pre-wrap text-slate-100 leading-relaxed">
                     {summary}
                     {isSummarizing && <span className="inline-block w-2 h-5 ml-1 bg-purple-600 animate-pulse"></span>}
                   </div>
@@ -630,14 +553,14 @@ export default function JobStatusPage() {
                   <div className="mt-4 flex gap-3">
                     <button
                       onClick={() => copyToClipboard(summary, -1)}
-                      className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                      className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-white/10 border border-white/15 rounded-lg hover:bg-white/15 transition-colors"
                     >
                       {copySuccess === -1 ? (
                         <>
-                          <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <svg className="w-4 h-4 text-green-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                           </svg>
-                          <span className="text-green-600">Copied!</span>
+                          <span className="text-green-200">Copied!</span>
                         </>
                       ) : (
                         <>
@@ -653,7 +576,7 @@ export default function JobStatusPage() {
                         setSummary(null);
                         setSummaryError(null);
                       }}
-                      className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                      className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-white/10 border border-white/15 rounded-lg hover:bg-white/15 transition-colors"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -668,7 +591,7 @@ export default function JobStatusPage() {
             {/* No Summary Yet - Initial State */}
             {!summary && !isSummarizing && !summaryError && (
               <div className="text-center py-6">
-                <p className="text-gray-600">Click "Generate AI Summary" to create a comprehensive summary of all scraped content.</p>
+                <p className="text-slate-200/90">Click &quot;Generate AI Summary&quot; to create a comprehensive summary of all scraped content.</p>
               </div>
             )}
           </div>
@@ -676,12 +599,12 @@ export default function JobStatusPage() {
 
         {/* Results Section */}
         {job.results && job.results.length > 0 && (
-          <div className="bg-white border rounded-lg p-6 mb-6">
+          <div className={`${panelClass} mb-6`}>
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-semibold text-gray-900">
+              <h2 className="text-xl font-semibold text-white/80">
                 Results ({job.results.length})
                 {job.status === 'running' && (
-                  <span className="ml-2 text-sm font-normal text-blue-600">
+                  <span className="ml-2 text-sm font-normal text-blue-200">
                     • Live updates
                   </span>
                 )}
@@ -707,17 +630,18 @@ export default function JobStatusPage() {
                 const needsTruncation = contentLength > 5000;
 
                 const isNew = newResultIndices.has(index);
+                const resultCardClass = `${panelClass} p-4 transition-all duration-500 ${
+                  isNew ? 'border-blue-400/60 bg-blue-500/10 animate-pulse' : 'hover:border-blue-300/40 hover:bg-white/10'
+                }`;
                 
                 return (
                   <div
                     key={index}
-                    className={`border rounded-lg p-4 hover:border-blue-300 transition-all duration-500 ${
-                      isNew ? 'border-blue-400 bg-blue-50 animate-pulse' : ''
-                    }`}
+                    className={resultCardClass}
                   >
                     <div className="flex items-start justify-between mb-2">
                       <div className="flex items-center gap-2 flex-1 mr-4">
-                        <h3 className="font-medium text-lg text-gray-900">
+                        <h3 className="font-medium text-lg text-white/80">
                           {result.title || 'No title'}
                         </h3>
                         {isNew && (
@@ -727,19 +651,19 @@ export default function JobStatusPage() {
                         )}
                       </div>
                       <span
-                        className={`px-2 py-1 rounded text-xs font-medium ${
+                        className={`px-2 py-1 rounded text-xs font-semibold border ${
                           result.status >= 200 && result.status < 300
-                            ? 'bg-green-100 text-green-800'
-                            : 'bg-red-100 text-red-800'
+                            ? 'bg-green-500/20 text-green-100 border-green-400/40'
+                            : 'bg-red-500/15 text-red-100 border-red-400/40'
                         }`}
                       >
                         {result.status}
                       </span>
                     </div>
-                    <p className="text-sm text-gray-900 break-all mb-2">
+                    <p className="text-sm text-white/80 break-all mb-2">
                       {result.url}
                     </p>
-                    <div className="flex gap-4 text-xs text-gray-700 mb-3">
+                    <div className="flex gap-4 text-xs text-white/60 mb-3">
                       <span>Size: {(result.size / 1024).toFixed(2)} KB</span>
                       <span>Scraped: {formatDate(result.scraped)}</span>
                       {hasContent && (
@@ -747,7 +671,7 @@ export default function JobStatusPage() {
                       )}
                     </div>
                     {result.error && (
-                      <p className="text-sm text-red-600 mt-2 mb-3">{result.error}</p>
+                      <p className="text-sm text-red-200 mt-2 mb-3">{result.error}</p>
                     )}
                     
                     {/* View Content Button */}
@@ -755,7 +679,7 @@ export default function JobStatusPage() {
                       <div className="mt-3">
                         <button
                           onClick={() => toggleContentView(index)}
-                          className="inline-flex items-center gap-2 px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg transition-colors text-sm font-medium"
+                          className="inline-flex items-center gap-2 px-4 py-2 bg-white/10 border border-blue-400/30 hover:bg-blue-500/10 text-blue-100 rounded-lg transition-colors text-sm font-medium"
                         >
                           <svg
                             className={`w-4 h-4 transition-transform ${
@@ -783,37 +707,35 @@ export default function JobStatusPage() {
                               <div className="flex gap-2">
                                 <button
                                   onClick={() => toggleViewMode(index)}
-                                  className="px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors"
-                                  style={{
-                                    backgroundColor: viewState.viewMode === 'raw' ? '#3b82f6' : 'white',
-                                    color: viewState.viewMode === 'raw' ? 'white' : '#374151',
-                                    borderColor: viewState.viewMode === 'raw' ? '#3b82f6' : '#d1d5db',
-                                  }}
+                                  className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${
+                                    viewState.viewMode === 'raw'
+                                      ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
+                                      : 'bg-white/5 text-slate-200 border-white/10 hover:bg-white/10'
+                                  }`}
                                 >
                                   Raw HTML
                                 </button>
                                 <button
                                   onClick={() => toggleViewMode(index)}
-                                  className="px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors"
-                                  style={{
-                                    backgroundColor: viewState.viewMode === 'preview' ? '#3b82f6' : 'white',
-                                    color: viewState.viewMode === 'preview' ? 'white' : '#374151',
-                                    borderColor: viewState.viewMode === 'preview' ? '#3b82f6' : '#d1d5db',
-                                  }}
+                                  className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${
+                                    viewState.viewMode === 'preview'
+                                      ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
+                                      : 'bg-white/5 text-slate-200 border-white/10 hover:bg-white/10'
+                                  }`}
                                 >
                                   Preview
                                 </button>
                               </div>
                               <button
                                 onClick={() => copyToClipboard(result.content!, index)}
-                                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-white/10 border border-white/15 rounded-lg hover:bg-white/15 transition-colors"
                               >
                                 {copySuccess === index ? (
                                   <>
-                                    <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <svg className="w-4 h-4 text-green-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                                     </svg>
-                                    <span className="text-green-600">Copied!</span>
+                                    <span className="text-green-200">Copied!</span>
                                   </>
                                 ) : (
                                   <>
@@ -829,7 +751,7 @@ export default function JobStatusPage() {
                             {/* Raw HTML View */}
                             {viewState.viewMode === 'raw' && (
                               <div className="relative">
-                                <pre className="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto text-xs leading-relaxed">
+                                <pre className="bg-black/50 text-slate-100 border border-white/10 p-4 rounded-lg overflow-x-auto text-xs leading-relaxed backdrop-blur">
                                   <code>
                                     {viewState.isExpanded || !needsTruncation
                                       ? result.content
@@ -839,7 +761,7 @@ export default function JobStatusPage() {
                                 {needsTruncation && (
                                   <button
                                     onClick={() => toggleExpand(index)}
-                                    className="mt-2 text-sm text-blue-600 hover:text-blue-700 font-medium"
+                                    className="mt-2 text-sm text-blue-200 hover:text-blue-100 font-medium"
                                   >
                                     {viewState.isExpanded ? '← Show Less' : 'Show More →'}
                                   </button>
@@ -849,29 +771,35 @@ export default function JobStatusPage() {
 
                             {/* Preview View */}
                             {viewState.viewMode === 'preview' && (
-                              <div className="relative">
-                                <div className="border rounded-lg p-4 bg-white overflow-auto max-h-96">
-                                  <div
-                                    style={{ color: '#1f2937' }}
-                                    className="prose prose-sm max-w-none [&_*]:!text-gray-900"
-                                    dangerouslySetInnerHTML={{
-                                      __html: sanitizeHTML(
-                                        viewState.isExpanded || !needsTruncation
-                                          ? result.content!
-                                          : truncateContent(result.content!)
-                                      ),
-                                    }}
-                                  />
-                                </div>
-                                {needsTruncation && (
-                                  <button
-                                    onClick={() => toggleExpand(index)}
-                                    className="mt-2 text-sm text-blue-600 hover:text-blue-700 font-medium"
-                                  >
-                                    {viewState.isExpanded ? '← Show Less' : 'Show More →'}
-                                  </button>
-                                )}
-                              </div>
+                              (() => {
+                                const sanitizedContent = sanitizeHTML(result.content!);
+                                const previewNeedsTruncation = sanitizedContent.length > 5000;
+                                const previewContent = viewState.isExpanded || !previewNeedsTruncation
+                                  ? sanitizedContent
+                                  : truncateContent(sanitizedContent);
+
+                                return (
+                                  <div className="relative">
+                                    <div className="border border-white/10 rounded-lg p-4 bg-white/5 overflow-auto max-h-96 backdrop-blur">
+                                      <div
+                                        style={{ color: '#e5e7eb' }}
+                                        className="prose prose-sm prose-invert max-w-none [&_*]:!text-white"
+                                        dangerouslySetInnerHTML={{
+                                          __html: previewContent,
+                                        }}
+                                      />
+                                    </div>
+                                    {previewNeedsTruncation && (
+                                      <button
+                                        onClick={() => toggleExpand(index)}
+                                        className="mt-2 text-sm text-blue-200 hover:text-blue-100 font-medium"
+                                      >
+                                        {viewState.isExpanded ? '← Show Less' : 'Show More →'}
+                                      </button>
+                                    )}
+                                  </div>
+                                );
+                              })()
                             )}
                           </div>
                         )}
@@ -888,13 +816,13 @@ export default function JobStatusPage() {
         {/* No Results Yet */}
         {(!job.results || job.results.length === 0) &&
           job.status !== 'failed' && (
-            <div className="bg-gray-50 border border-gray-200 rounded-lg p-8 text-center">
+            <div className={`${panelClass} text-white/90 rounded-lg p-8 text-center`}>
               {job.status === 'completed' ? (
-                <p className="text-gray-600">No results available for this job</p>
+                <p className="text-slate-200/90">No results available for this job</p>
               ) : job.status === 'running' ? (
                 <div className="flex flex-col items-center gap-3">
                   <svg
-                    className="animate-spin h-8 w-8 text-blue-600"
+                    className="animate-spin h-8 w-8 text-blue-300"
                     xmlns="http://www.w3.org/2000/svg"
                     fill="none"
                     viewBox="0 0 24 24"
@@ -913,15 +841,15 @@ export default function JobStatusPage() {
                       d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                     ></path>
                   </svg>
-                  <p className="text-gray-600 font-medium">
+                  <p className="text-slate-100 font-medium">
                     Scraping in progress...
                   </p>
-                  <p className="text-sm text-gray-500">
+                  <p className="text-sm text-slate-300/90">
                     Results will appear here in real-time as they arrive
                   </p>
                 </div>
               ) : (
-                <p className="text-gray-600">
+                <p className="text-slate-200/90">
                   Waiting for job to start...
                 </p>
               )}

@@ -1,8 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 
 const ARACHNE_API_URL = process.env.ARACHNE_API_URL || 'http://localhost:8080';
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     const response = await fetch(`${ARACHNE_API_URL}/api/jobs`);
     const data = await response.json();

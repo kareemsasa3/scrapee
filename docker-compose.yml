@@ -103,6 +103,7 @@ services:
     ports:
       - "${FRONTEND_PORT:-3000}:${FRONTEND_PORT:-3000}"
     environment:
+      - NEXT_PUBLIC_ARACHNE_API_URL=http://arachne:${ARACHNE_PORT:-8080}
       - ARACHNE_API_URL=http://arachne:${ARACHNE_PORT:-8080}
       - AI_BACKEND_URL=http://ai-backend:${AI_BACKEND_PORT:-3001}
       - NEXT_PUBLIC_APP_URL=http://localhost:${FRONTEND_PORT:-3000}

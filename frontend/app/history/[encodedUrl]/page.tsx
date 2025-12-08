@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import ReactMarkdown from 'react-markdown';
 import { Trash2 } from 'lucide-react';
+import DOMPurify from 'isomorphic-dompurify';
+import GlassModal from '@/components/GlassModal';
 
 type HistoryEntry = {
   id: string;
@@ -87,13 +89,16 @@ export default function HistoryDetailPage() {
   const [selectedVersion, setSelectedVersion] = useState<VersionDetail | null>(null);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [versionViewMode, setVersionViewMode] = useState<'text' | 'preview'>('text');
+  const panelClass =
+    'rounded-lg border border-white/10 bg-white/5 shadow-sm backdrop-blur-sm supports-[backdrop-filter]:backdrop-blur-sm';
 
   useEffect(() => {
     const fetchHistory = async () => {
       setIsLoading(true);
       setError(null);
       try {
-        const res = await fetch(`${apiBase}/api/scrapes/history?url=${encodeURIComponent(decodedUrl)}`, {
+        const res = await fetch(`${apiBase}/memory/history?url=${encodeURIComponent(decodedUrl)}`, {
           cache: 'no-store',
         });
         if (!res.ok) {
@@ -130,7 +135,7 @@ export default function HistoryDetailPage() {
     setDiffs((prev) => ({ ...prev, [entryId]: { loading: true } }));
     try {
       const res = await fetch(
-        `${apiBase}/api/scrapes/diff?url=${encodeURIComponent(decodedUrl)}&from=${encodeURIComponent(
+        `${apiBase}/memory/diff?url=${encodeURIComponent(decodedUrl)}&from=${encodeURIComponent(
           from.scraped_at,
         )}&to=${encodeURIComponent(to.scraped_at)}`,
         { cache: 'no-store' },
@@ -152,7 +157,7 @@ export default function HistoryDetailPage() {
     setIsDetailLoading(true);
     setSelectedVersion(null);
     try {
-      const res = await fetch(`${apiBase}/api/scrapes/version/${id}`, { cache: 'no-store' });
+      const res = await fetch(`${apiBase}/memory/version/${id}`, { cache: 'no-store' });
       if (!res.ok) {
         throw new Error(`Failed to load version (${res.status})`);
       }
@@ -186,7 +191,7 @@ export default function HistoryDetailPage() {
       ),
     );
     try {
-      const res = await fetch(`${apiBase}/api/scrapes/analyze-changes`, {
+      const res = await fetch(`${apiBase}/memory/analyze-changes`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -230,11 +235,53 @@ export default function HistoryDetailPage() {
     }
   };
 
+  useEffect(() => {
+    if (selectedVersion) {
+      setVersionViewMode('text');
+    }
+  }, [selectedVersion]);
+
+  const sanitizeHTML = (html: string) => {
+    return DOMPurify.sanitize(html, {
+      ALLOWED_TAGS: [
+        'p',
+        'br',
+        'strong',
+        'em',
+        'u',
+        'h1',
+        'h2',
+        'h3',
+        'h4',
+        'h5',
+        'h6',
+        'ul',
+        'ol',
+        'li',
+        'a',
+        'img',
+        'div',
+        'span',
+        'table',
+        'thead',
+        'tbody',
+        'tr',
+        'td',
+        'th',
+        'blockquote',
+        'code',
+        'pre',
+      ],
+      ALLOWED_ATTR: ['href', 'src', 'alt', 'title', 'class'],
+      ALLOW_DATA_ATTR: false,
+    });
+  };
+
   const deleteVersion = async (entryId: string) => {
     if (!window.confirm('Are you sure you want to delete this version?')) return;
     setDeletingId(entryId);
     try {
-      const res = await fetch(`${apiBase}/api/scrapes/version/${entryId}`, { method: 'DELETE' });
+      const res = await fetch(`${apiBase}/memory/version/${entryId}`, { method: 'DELETE' });
       if (!res.ok) {
         throw new Error(`Failed to delete (status ${res.status})`);
       }
@@ -266,22 +313,22 @@ export default function HistoryDetailPage() {
 
   return (
     <main className="min-h-screen p-8">
-      <div className="max-w-6xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
+      <div className="max-w-6xl mx-auto space-y-4">
+        <div className={`${panelClass} p-4 md:p-6 flex items-center justify-between`}>
           <div>
             <button
               onClick={() => router.back()}
-              className="text-blue-600 hover:text-blue-700 inline-flex items-center gap-2 text-sm font-medium"
+              className="text-blue-300 hover:text-blue-200 inline-flex items-center gap-2 text-sm font-medium"
             >
               ← Back
             </button>
-            <h1 className="text-3xl font-bold mt-2">Version History</h1>
-            <p className="text-gray-600 break-all text-sm mt-2">{decodedUrl}</p>
+            <h1 className="text-3xl font-bold mt-2 text-white">Version History</h1>
+            <p className="text-white/80 break-all text-sm mt-2">{decodedUrl}</p>
             <div className="flex items-center gap-3 mt-2">
-              <span className="text-xs text-gray-500">{history.length} versions</span>
+              <span className="text-xs text-white/60">{history.length} versions</span>
               <button
                 onClick={copyURL}
-                className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+                className="text-xs text-blue-200 hover:text-blue-100 font-medium"
               >
                 Copy URL
               </button>
@@ -289,15 +336,15 @@ export default function HistoryDetailPage() {
           </div>
           <Link
             href="/history"
-            className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+            className="text-sm text-blue-200 hover:text-blue-100 font-medium"
           >
             Browse all
           </Link>
         </div>
 
         {isLoading && (
-          <div className="bg-white border rounded-lg p-6 flex items-center gap-3 text-gray-600">
-            <svg className="animate-spin h-5 w-5 text-blue-600" viewBox="0 0 24 24" fill="none">
+          <div className={`${panelClass} p-6 flex items-center gap-3 text-white/80`}>
+            <svg className="animate-spin h-5 w-5 text-blue-300" viewBox="0 0 24 24" fill="none">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
               <path
                 className="opacity-75"
@@ -310,16 +357,16 @@ export default function HistoryDetailPage() {
         )}
 
         {error && !isLoading && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-6">
-            <h2 className="text-lg font-semibold text-red-800 mb-2">Failed to load history</h2>
-            <p className="text-red-700">{error}</p>
+          <div className={`${panelClass} p-6 bg-red-500/10 border-red-200/50`}>
+            <h2 className="text-lg font-semibold text-red-100 mb-2">Failed to load history</h2>
+            <p className="text-red-100">{error}</p>
           </div>
         )}
 
         {!isLoading && !error && history.length === 0 && (
-          <div className="bg-gray-50 border border-gray-200 rounded-lg p-8 text-center">
-            <h2 className="text-xl font-semibold text-gray-800">No versions yet</h2>
-            <p className="text-gray-600 mt-2">Scrape this URL to start building history.</p>
+          <div className={`${panelClass} p-8 text-center`}>
+            <h2 className="text-xl font-semibold text-white">No versions yet</h2>
+            <p className="text-white/80 mt-2">Scrape this URL to start building history.</p>
           </div>
         )}
 
@@ -331,11 +378,11 @@ export default function HistoryDetailPage() {
               const hasPrevious = Boolean(previous);
               const analysisState = analyses[entry.id];
               return (
-                <div key={entry.id} className="bg-white border rounded-lg p-4">
+                <div key={entry.id} className={`${panelClass} p-4`}>
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <div className="flex items-center gap-2">
-                        <span className="text-sm text-gray-500">v{history.length - idx}</span>
+                        <span className="text-sm text-white/60">v{history.length - idx}</span>
                         <span
                           className={`px-2 py-0.5 rounded text-xs font-medium ${
                             entry.has_changes ? 'bg-amber-100 text-amber-800' : 'bg-gray-100 text-gray-700'
@@ -353,20 +400,20 @@ export default function HistoryDetailPage() {
                           {entry.status_code}
                         </span>
                       </div>
-                      <h3 className="text-lg font-semibold text-gray-900 mt-1">
+                      <h3 className="text-lg font-semibold text-white mt-1">
                         {entry.title || 'No title'}
                       </h3>
-                      <p className="text-sm text-gray-600 mt-1">
+                      <p className="text-sm text-white/80 mt-1">
                         {new Date(entry.scraped_at).toLocaleString()}
                       </p>
-                      <p className="text-xs text-gray-500 mt-1 font-mono break-all">
+                      <p className="text-xs text-white/60 mt-1 font-mono break-all">
                         hash {entry.content_hash.slice(0, 12)}...
                       </p>
                     </div>
                     <div className="flex flex-col gap-2 items-end">
                       <button
                         onClick={() => fetchVersion(entry.id)}
-                        className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+                        className="text-sm text-blue-200 hover:text-blue-100 font-medium"
                       >
                         View version
                       </button>
@@ -375,8 +422,8 @@ export default function HistoryDetailPage() {
                         disabled={!hasPrevious}
                         className={`text-sm font-medium inline-flex items-center gap-1 ${
                           hasPrevious
-                            ? 'text-purple-600 hover:text-purple-700'
-                            : 'text-gray-400 cursor-not-allowed'
+                            ? 'text-purple-200 hover:text-purple-100'
+                            : 'text-white/30 cursor-not-allowed'
                         }`}
                       >
                         {hasPrevious ? 'Diff vs previous' : 'No previous version'}
@@ -389,8 +436,8 @@ export default function HistoryDetailPage() {
                           disabled={analysisState?.loading}
                           className={`text-sm font-medium inline-flex items-center gap-1 ${
                             analysisState?.loading
-                              ? 'text-gray-400 cursor-not-allowed'
-                              : 'text-purple-700 hover:text-purple-800'
+                              ? 'text-white/40 cursor-not-allowed'
+                              : 'text-purple-200 hover:text-purple-100'
                           }`}
                         >
                           {analysisState?.loading
@@ -406,7 +453,7 @@ export default function HistoryDetailPage() {
                         className={`text-sm font-medium inline-flex items-center gap-1 ${
                           deletingId === entry.id
                             ? 'text-red-300 cursor-not-allowed'
-                            : 'text-red-700 hover:text-red-800'
+                            : 'text-red-300 hover:text-red-200'
                         }`}
                       >
                         <Trash2 className="w-4 h-4" />
@@ -416,38 +463,38 @@ export default function HistoryDetailPage() {
                   </div>
 
                   {(entry.change_summary || analysisState?.text || analysisState?.error) && (
-                    <div className="mt-3 bg-purple-50 border border-purple-100 rounded-lg p-3 text-sm text-gray-800">
-                      <div className="font-medium text-purple-700 mb-1">Change summary:</div>
+                    <div className="mt-3 bg-purple-500/10 border border-purple-200/40 rounded-lg p-3 text-sm text-white/90 backdrop-blur-sm supports-[backdrop-filter]:backdrop-blur-sm">
+                      <div className="font-medium text-purple-100 mb-1">Change summary:</div>
                       {entry.change_summary && (
-                        <div className="prose prose-sm text-gray-900">
+                        <div className="prose prose-sm text-white/90">
                           <ReactMarkdown>{entry.change_summary}</ReactMarkdown>
                         </div>
                       )}
                       {!entry.change_summary && analysisState?.text && (
-                        <div className="prose prose-sm text-gray-900 whitespace-pre-wrap">
+                        <div className="prose prose-sm text-white/90 whitespace-pre-wrap">
                           {analysisState.text}
                         </div>
                       )}
                       {analysisState?.error && (
-                        <div className="text-sm text-red-600">{analysisState.error}</div>
+                        <div className="text-sm text-red-300">{analysisState.error}</div>
                       )}
                     </div>
                   )}
 
                   {entry.summary && (
-                <div className="mt-3 bg-blue-50 border border-blue-100 rounded-lg p-3 text-sm text-gray-800">
-                  <div className="font-medium text-blue-700 mb-1">Summary:</div>
-                  <div className="prose prose-sm text-gray-900">
+                <div className="mt-3 bg-blue-500/10 border border-blue-200/40 rounded-lg p-3 text-sm text-white/90 backdrop-blur-sm supports-[backdrop-filter]:backdrop-blur-sm">
+                  <div className="font-medium text-blue-100 mb-1">Summary:</div>
+                  <div className="prose prose-sm text-white/90">
                     <ReactMarkdown>{entry.summary}</ReactMarkdown>
                   </div>
                     </div>
                   )}
 
                   {diffState && (
-                    <div className="mt-3 border border-gray-200 rounded-lg p-3 bg-gray-50">
+                    <div className="mt-3 border border-white/10 rounded-lg p-3 bg-white/5 backdrop-blur-sm supports-[backdrop-filter]:backdrop-blur-sm">
                       {diffState.loading && (
-                        <div className="text-sm text-gray-600 flex items-center gap-2">
-                          <svg className="animate-spin h-4 w-4 text-blue-600" viewBox="0 0 24 24" fill="none">
+                        <div className="text-sm text-white/80 flex items-center gap-2">
+                          <svg className="animate-spin h-4 w-4 text-blue-300" viewBox="0 0 24 24" fill="none">
                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                             <path
                               className="opacity-75"
@@ -459,20 +506,20 @@ export default function HistoryDetailPage() {
                         </div>
                       )}
                       {diffState.error && (
-                        <p className="text-sm text-red-600">{diffState.error}</p>
+                        <p className="text-sm text-red-300">{diffState.error}</p>
                       )}
                       {diffState.data && (
                         <div className="space-y-2">
-                          <div className="flex items-center gap-3 text-xs text-gray-600">
-                            <span className="font-mono bg-white border rounded px-2 py-1">
+                          <div className="flex items-center gap-3 text-xs text-white/70">
+                            <span className="font-mono bg-white/10 border border-white/20 rounded px-2 py-1 text-white">
                               +{diffState.data.lines_added} / -{diffState.data.lines_removed}
                             </span>
-                            <span className="text-gray-500">
+                            <span className="text-white/60">
                               {new Date(diffState.data.from_timestamp).toLocaleString()} →{' '}
                               {new Date(diffState.data.to_timestamp).toLocaleString()}
                             </span>
                           </div>
-                          <div className="bg-slate-50 border border-slate-200 rounded p-3 overflow-x-auto">
+                          <div className="bg-slate-900/40 border border-slate-200/20 rounded p-3 overflow-x-auto">
                             <div className="space-y-0.5">{renderDiffLines(diffState.data.diff)}</div>
                           </div>
                         </div>
@@ -487,93 +534,131 @@ export default function HistoryDetailPage() {
       </div>
 
       {/* Version detail modal */}
-      {selectedVersion && (
-        <div
-          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50"
-          onClick={() => setSelectedVersion(null)}
-        >
-          <div
-            className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="sticky top-0 bg-white border-b p-5 flex items-start justify-between gap-3">
-              <div>
-                <h2 className="text-xl font-bold text-gray-900">Version {selectedVersion.id}</h2>
-                <p className="text-sm text-gray-600 break-all">{selectedVersion.url}</p>
-              </div>
+      <GlassModal
+        open={Boolean(selectedVersion)}
+        onClose={() => setSelectedVersion(null)}
+        title={selectedVersion ? `Version ${selectedVersion.id}` : undefined}
+        subtitle={selectedVersion?.url}
+        footer={
+          selectedVersion && (
+            <>
               <button
                 onClick={() => setSelectedVersion(null)}
-                className="text-gray-400 hover:text-gray-600"
+                className="px-4 py-2 text-sm font-medium text-white bg-white/10 border border-white/20 rounded hover:bg-white/20"
               >
-                ✕
+                Close
               </button>
-            </div>
-            <div className="p-5 space-y-4">
+            </>
+          )
+        }
+      >
+        {selectedVersion && (
+            <div className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-                <div><span className="text-gray-500">Title:</span> <span className="text-gray-900">{selectedVersion.title || 'No title'}</span></div>
-                <div><span className="text-gray-500">Domain:</span> <span className="text-gray-900">{selectedVersion.domain}</span></div>
-                <div><span className="text-gray-500">Status:</span> <span className="text-gray-900">{selectedVersion.status_code}</span></div>
-                <div><span className="text-gray-500">Scraped:</span> <span className="text-gray-900">{new Date(selectedVersion.scraped_at).toLocaleString()}</span></div>
+                <div><span className="text-white/70">Title:</span> <span className="text-white">{selectedVersion.title || 'No title'}</span></div>
+                <div><span className="text-white/70">Domain:</span> <span className="text-white">{selectedVersion.domain}</span></div>
+                <div><span className="text-white/70">Status:</span> <span className="text-white">{selectedVersion.status_code}</span></div>
+                <div><span className="text-white/70">Scraped:</span> <span className="text-white">{new Date(selectedVersion.scraped_at).toLocaleString()}</span></div>
                 <div className="md:col-span-2">
-                  <span className="text-gray-500">Hash:</span>{' '}
-                  <span className="text-gray-900 font-mono break-all">{selectedVersion.content_hash}</span>
+                  <span className="text-white/70">Hash:</span>{' '}
+                  <span className="text-white font-mono break-all">{selectedVersion.content_hash}</span>
                 </div>
               </div>
 
               {selectedVersion.summary && (
-                <div className="bg-blue-50 border border-blue-100 rounded p-3 text-sm text-gray-800">
-                  <div className="font-semibold text-blue-700 mb-1">Summary:</div>
-                  <div className="prose prose-sm text-gray-900">
+                <div className="bg-blue-500/10 border border-blue-200/40 rounded p-3 text-sm text-white/90 backdrop-blur-sm supports-[backdrop-filter]:backdrop-blur-sm">
+                  <div className="font-semibold text-blue-100 mb-1">Summary:</div>
+                  <div className="prose prose-sm text-white/90">
                     <ReactMarkdown>{selectedVersion.summary}</ReactMarkdown>
                   </div>
                 </div>
               )}
 
               {selectedVersion.change_summary && (
-                <div className="bg-purple-50 border border-purple-100 rounded p-3 text-sm text-gray-800">
-                  <span className="font-semibold text-purple-700">Change summary: </span>
+                <div className="bg-purple-500/10 border border-purple-200/40 rounded p-3 text-sm text-white/90 backdrop-blur-sm supports-[backdrop-filter]:backdrop-blur-sm">
+                  <span className="font-semibold text-purple-100">Change summary: </span>
                   {selectedVersion.change_summary}
                 </div>
               )}
 
-              {selectedVersion.clean_text && (
+              {(selectedVersion.clean_text || selectedVersion.raw_content) && (
                 <div>
-                  <h3 className="text-sm font-semibold text-gray-800 mb-2">Content (first 800 chars)</h3>
-                  <div className="bg-gray-50 border rounded p-3 text-sm text-gray-800 whitespace-pre-wrap">
-                    {selectedVersion.clean_text.slice(0, 800)}
-                    {selectedVersion.clean_text.length > 800 ? '…' : ''}
+                  <div className="flex items-center justify-between gap-3 mb-2">
+                    <h3 className="text-sm font-semibold text-white">Content</h3>
+                    {selectedVersion.raw_content && (
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => setVersionViewMode('text')}
+                          className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${
+                            versionViewMode === 'text'
+                              ? 'bg-blue-600 text-white border-blue-400'
+                              : 'bg-white/10 text-white border-white/20 hover:bg-white/20'
+                          }`}
+                        >
+                          Text
+                        </button>
+                        <button
+                          onClick={() => setVersionViewMode('preview')}
+                          disabled={!selectedVersion.raw_content}
+                          className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${
+                            versionViewMode === 'preview'
+                              ? 'bg-blue-600 text-white border-blue-400'
+                              : 'bg-white/10 text-white border-white/20 hover:bg-white/20'
+                          } ${!selectedVersion.raw_content ? 'opacity-60 cursor-not-allowed' : ''}`}
+                        >
+                          Preview
+                        </button>
+                      </div>
+                    )}
                   </div>
+                  {versionViewMode === 'preview' && selectedVersion.raw_content ? (
+                    <div className="border border-white/10 rounded p-3 bg-white/5 max-h-96 overflow-auto backdrop-blur-sm supports-[backdrop-filter]:backdrop-blur-sm">
+                      <div
+                        className="prose prose-sm max-w-none text-white [&_*]:!text-white"
+                        dangerouslySetInnerHTML={{ __html: sanitizeHTML(selectedVersion.raw_content) }}
+                      />
+                    </div>
+                  ) : (
+                    <div className="bg-white/5 border border-white/10 rounded p-3 text-sm text-white whitespace-pre-wrap backdrop-blur-sm supports-[backdrop-filter]:backdrop-blur-sm">
+                      {selectedVersion.clean_text
+                        ? `${selectedVersion.clean_text.slice(0, 800)}${
+                            selectedVersion.clean_text.length > 800 ? '…' : ''
+                          }`
+                        : 'No text available for this version.'}
+                    </div>
+                  )}
+                  {versionViewMode === 'text' && (
+                    <p className="text-xs text-white/60 mt-2">
+                      Showing first 800 characters of extracted text
+                    </p>
+                  )}
+                  {versionViewMode === 'preview' && !selectedVersion.raw_content && (
+                    <p className="text-xs text-white/60 mt-2">Preview unavailable for this version.</p>
+                  )}
                 </div>
               )}
             </div>
-            <div className="sticky bottom-0 bg-gray-50 border-t p-4 flex justify-end">
-              <button
-                onClick={() => setSelectedVersion(null)}
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-100"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+        )}
+      </GlassModal>
 
       {/* Loading modal for version */}
-      {isDetailLoading && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-40">
-          <div className="bg-white rounded-lg p-6 flex items-center gap-3 text-gray-700">
-            <svg className="animate-spin h-5 w-5 text-blue-600" viewBox="0 0 24 24" fill="none">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path
-                className="opacity-75"
-                fill="currentColor"
-                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-              />
-            </svg>
-            Loading version…
-          </div>
+      <GlassModal
+        open={isDetailLoading}
+        onClose={() => setIsDetailLoading(false)}
+        title="Loading version…"
+      >
+        <div className="flex items-center gap-3 text-white">
+          <svg className="animate-spin h-5 w-5 text-blue-300" viewBox="0 0 24 24" fill="none">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path
+              className="opacity-75"
+              fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+            />
+          </svg>
+          Loading…
         </div>
-      )}
+      </GlassModal>
     </main>
   );
 }
